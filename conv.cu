@@ -17,6 +17,12 @@ using namespace std;
 		exit(1); \
 	}} while(0)
 
+// returns t2 - t1 in milliseconds
+int timespec_diff_ms(timespec& t1, timespec& t2)
+{
+	return (t2.tv_sec - t1.tv_sec) * 1000 + (t2.tv_nsec - t1.tv_nsec) / 1e6;
+}
+
 struct ConvolutionArguments
 {
 	float *images;
@@ -33,11 +39,14 @@ struct ConvolutionArguments
 	int output_features;
 };
 
-void convolution_cpu(const ConvolutionArguments &args)
+int convolution_cpu(const ConvolutionArguments &args)
 {
 	const int image_size = args.image_width * args.image_height;
 	const int filter_size = args.filter_width * args.filter_height;
 	const int output_size = image_size;
+
+	timespec time_begin, time_end;
+	clock_gettime(CLOCK_REALTIME, &time_begin);
 
 	for (int i_img = 0; i_img < args.image_count; i_img++) {
 		for (int i_feat = 0; i_feat < args.image_features; i_feat++) {
@@ -71,6 +80,9 @@ void convolution_cpu(const ConvolutionArguments &args)
 			}
 		}
 	}
+
+	clock_gettime(CLOCK_REALTIME, &time_end);
+	return timespec_diff_ms(time_begin, time_end);
 }
 
 __global__
@@ -116,7 +128,7 @@ void convolution_kernel(const float *images, const float *filters,
 	}
 }
 
-void convolution_gpu(const ConvolutionArguments &args)
+int convolution_gpu(const ConvolutionArguments &args)
 {
 	const int images_size = args.image_count * args.image_width *
 		args.image_height * args.image_features;
@@ -141,10 +153,16 @@ void convolution_gpu(const ConvolutionArguments &args)
 			args.image_count);
 	dim3 dimBlock(TILE_X, TILE_Y, 1);
 
+	timespec time_begin, time_end;
+	clock_gettime(CLOCK_REALTIME, &time_begin);
+
 	convolution_kernel<<<dimGrid, dimBlock>>>(d_images, d_filters, d_outputs,
 			args.image_count, args.image_width, args.image_height,
 			args.image_features, args.filter_width, args.filter_height,
 			args.output_features);
+	cudaDeviceSynchronize(); // wait until convolution_kernel is finished
+
+	clock_gettime(CLOCK_REALTIME, &time_end);
 
 	// copy data from device
 	CUDA_CHECK(cudaMemcpy(args.outputs, d_outputs, sizeof(float) * outputs_size,
@@ -153,12 +171,8 @@ void convolution_gpu(const ConvolutionArguments &args)
 	cudaFree(&d_images);
 	cudaFree(&d_filters);
 	cudaFree(&d_outputs);
-}
 
-// returns t2 - t1 in milliseconds
-int timespec_diff_ms(timespec& t1, timespec& t2)
-{
-	return (t2.tv_sec - t1.tv_sec) * 1000 + (t2.tv_nsec - t1.tv_nsec) / 1e6;
+	return timespec_diff_ms(time_begin, time_end);
 }
 
 int main(int argc, char *argv[])
@@ -203,26 +217,30 @@ int main(int argc, char *argv[])
 	for (int i = 0; i < filters_size; i++)
 		filters[i] = (rand() % 100 - 50) / 50.0;
 
-	cudaSetDevice(0); // this is used to initialize a GPU context
+	cout << "image: count=" << args.image_count
+		<< " features=" << args.image_features
+		<< " width=" << args.image_width
+		<< " height=" << args.image_height << endl;
+	cout << "filter: count=" << (args.image_features * args.output_features)
+		<< " width=" << args.image_width
+		<< " height=" << args.image_height << endl;
+	cout << "output: count=" << args.image_count
+		<< " features=" << args.output_features
+		<< " width=" << args.image_width
+		<< " height=" << args.image_height << endl;
 
-	timespec time_begin, time_end;
+	cudaSetDevice(0); // this is used to initialize a GPU context
 
 	args.images = images;
 	args.filters = filters;
 
 	cout << "running cpu convolution" << endl;
-	clock_gettime(CLOCK_REALTIME, &time_begin);
 	args.outputs = outputs_cpu;
-	convolution_cpu(args);
-	clock_gettime(CLOCK_REALTIME, &time_end);
-	int duration_cpu = timespec_diff_ms(time_begin, time_end);
+	int duration_cpu = convolution_cpu(args);
 
 	cout << "running gpu convolution" << endl;
-	clock_gettime(CLOCK_REALTIME, &time_begin);
 	args.outputs = outputs_gpu;
-	convolution_gpu(args);
-	clock_gettime(CLOCK_REALTIME, &time_end);
-	int duration_gpu = timespec_diff_ms(time_begin, time_end);
+	int duration_gpu = convolution_gpu(args);
 
 	// compare cpu and gpu answers
 	float threshold = 0.0001;
