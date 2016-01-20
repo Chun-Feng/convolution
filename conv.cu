@@ -99,14 +99,15 @@ void convolution_kernel(const float *images, const float *filters,
 	const int row = blockIdx.y * TILE_Y + threadIdx.y;
 	const int i_img = blockIdx.z;
 
-	const float *image = &images[i_img * image_size];
 
 	if (col < image_width && row < image_height) {
 		for (int i_feat = 0; i_feat < image_features; i_feat++) {
 			for (int i_out_feat = 0; i_out_feat < output_features; i_out_feat++) {
+				const int image_index = i_img * image_features + i_feat;
 				const int filter_index = i_feat * output_features + i_out_feat;
 				const int output_index = i_img * output_features + i_out_feat;
 
+				const float *image = &images[image_index * image_size];
 				const float *filter = &filters[filter_index * filter_size];
 				float *output = &outputs[output_index * output_size];
 
@@ -243,15 +244,16 @@ int main(int argc, char *argv[])
 	int duration_gpu = convolution_gpu(args);
 
 	// compare cpu and gpu answers
-	float threshold = 0.0001;
-	//for (int i = 0; i < outputs_size; i++) {
-	//	if (abs(outputs_cpu[i] - outputs_gpu[i]) >= threshold) {
-	//		cout << "error: answers don't match at index " << i << endl;
-	//		cout << outputs_cpu[i] << endl;
-	//		cout << outputs_gpu[i] << endl;
-	//		exit(1);
-	//	}
-	//}
+	float threshold = 0.00001;
+	for (int i = 0; i < outputs_size; i++) {
+		if (abs(outputs_cpu[i] - outputs_gpu[i]) >= threshold) {
+			cout << "error: answers don't match at index " << i << endl;
+			cout << "cpu output: " << outputs_cpu[i] << endl;
+			cout << "gpu output: " << outputs_gpu[i] << endl;
+			exit(1);
+		}
+	}
+	cout << "compare ok" << endl;
 
 	cout << "cpu duration: " << duration_cpu << " ms" << endl;
 	cout << "gpu duration: " << duration_gpu << " ms" << endl;
