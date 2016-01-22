@@ -179,13 +179,6 @@ int convolution_gpu(const ConvolutionArguments &args)
 
 int main(int argc, char *argv[])
 {
-	bool gpu = false;
-
-	if (argc == 2 && argv[1][0] == 'g')
-		gpu = true;
-
-	// set arguments
-
 	ConvolutionArguments args;
 
 	args.image_count = 32;
