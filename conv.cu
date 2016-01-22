@@ -6,8 +6,7 @@
 using namespace std;
 
 // FIXME: the code assumes filter size equals tiling size
-#define TILE_X 5
-#define TILE_Y 5
+#define TILE_SIZE 5
 
 #define CUDA_CHECK(ret) do { \
 	int errorcode = (ret); \
@@ -32,8 +31,7 @@ struct ConvolutionArguments
 	int image_features;
 
 	float *filters;
-	int filter_width;
-	int filter_height;
+	int filter_size;
 
 	float *outputs;
 	int output_features;
@@ -42,7 +40,7 @@ struct ConvolutionArguments
 int convolution_cpu(const ConvolutionArguments &args)
 {
 	const int image_size = args.image_width * args.image_height;
-	const int filter_size = args.filter_width * args.filter_height;
+	const int filter_pixels = args.filter_size * args.filter_size;
 	const int output_size = image_size;
 
 	timespec time_begin, time_end;
@@ -57,20 +55,20 @@ int convolution_cpu(const ConvolutionArguments &args)
 				const int output_index = i_img * args.output_features + i_out_feat;
 
 				// convolution between one image feature and one filter
-				const float *filter = &args.filters[filter_index * filter_size];
+				const float *filter = &args.filters[filter_index * filter_pixels];
 				float *output = &args.outputs[output_index * output_size];
 
 				for (int row = 0; row < args.image_height; row++) {
 					for (int col = 0; col < args.image_width; col++) {
 						float sum = 0.0;
-						for (int frow = 0; frow < args.filter_height; frow++) {
-							for (int fcol = 0; fcol < args.filter_width; fcol++) {
-								int irow = row + frow - args.filter_height / 2;
-								int icol = col + fcol - args.filter_width / 2;
+						for (int frow = 0; frow < args.filter_size; frow++) {
+							for (int fcol = 0; fcol < args.filter_size; fcol++) {
+								int irow = row + frow - args.filter_size / 2;
+								int icol = col + fcol - args.filter_size / 2;
 								if (irow >= 0 && irow < args.image_height
 										&& icol >= 0 && icol < args.image_width) {
 									sum += image[irow * args.image_width + icol] *
-										filter[frow * args.filter_width + fcol];
+										filter[frow * args.filter_size + fcol];
 								}
 							}
 						}
@@ -85,18 +83,18 @@ int convolution_cpu(const ConvolutionArguments &args)
 	return timespec_diff_ms(time_begin, time_end);
 }
 
-template <int filter_width, int filter_height>
+template <int filter_size>
 __global__
 void convolution_kernel(const float *images, const float *filters,
 		float *outputs, int image_count, int image_width, int image_height,
 		int image_features, int output_features)
 {
 	const int image_size = image_width * image_height;
-	const int filter_size = filter_width * filter_height;
+	const int filter_pixels = filter_size * filter_size;
 	const int output_size = image_size;
 
-	const int col = blockIdx.x * TILE_X + threadIdx.x;
-	const int row = blockIdx.y * TILE_Y + threadIdx.y;
+	const int col = blockIdx.x * TILE_SIZE + threadIdx.x;
+	const int row = blockIdx.y * TILE_SIZE + threadIdx.y;
 	const int i_img = blockIdx.z;
 
 
@@ -108,18 +106,18 @@ void convolution_kernel(const float *images, const float *filters,
 				const int output_index = i_img * output_features + i_out_feat;
 
 				const float *image = &images[image_index * image_size];
-				const float *filter = &filters[filter_index * filter_size];
+				const float *filter = &filters[filter_index * filter_pixels];
 				float *output = &outputs[output_index * output_size];
 
 				float sum = 0.0;
-				for (int frow = 0; frow < filter_height; frow++) {
-					for (int fcol = 0; fcol < filter_width; fcol++) {
-						int irow = row + frow - filter_height / 2;
-						int icol = col + fcol - filter_width / 2;
+				for (int frow = 0; frow < filter_size; frow++) {
+					for (int fcol = 0; fcol < filter_size; fcol++) {
+						int irow = row + frow - filter_size / 2;
+						int icol = col + fcol - filter_size / 2;
 						if (irow >= 0 && irow < image_height
 								&& icol >= 0 && icol < image_width) {
 							sum += image[irow * image_width + icol] *
-								filter[frow * filter_width + fcol];
+								filter[frow * filter_size + fcol];
 						}
 					}
 				}
@@ -134,7 +132,7 @@ int convolution_gpu(const ConvolutionArguments &args)
 	const int images_size = args.image_count * args.image_width *
 		args.image_height * args.image_features;
 	const int filters_size = args.output_features * args.image_features *
-		args.filter_width * args.filter_height;
+		args.filter_size * args.filter_size;
 	const int outputs_size = args.image_count * args.image_width *
 		args.image_height * args.output_features;
 
@@ -150,14 +148,14 @@ int convolution_gpu(const ConvolutionArguments &args)
 	CUDA_CHECK(cudaMemcpy(d_filters, args.filters, sizeof(float) * filters_size,
 				cudaMemcpyHostToDevice));
 
-	dim3 dimGrid(args.image_width / TILE_X + 1, args.image_height / TILE_Y + 1,
+	dim3 dimGrid(args.image_width / TILE_SIZE + 1, args.image_height / TILE_SIZE + 1,
 			args.image_count);
-	dim3 dimBlock(TILE_X, TILE_Y, 1);
+	dim3 dimBlock(TILE_SIZE, TILE_SIZE, 1);
 
 	timespec time_begin, time_end;
 	clock_gettime(CLOCK_REALTIME, &time_begin);
 
-	convolution_kernel<TILE_X, TILE_Y><<<dimGrid, dimBlock>>>(
+	convolution_kernel<TILE_SIZE><<<dimGrid, dimBlock>>>(
 			d_images, d_filters, d_outputs,
 			args.image_count, args.image_width, args.image_height,
 			args.image_features,
@@ -186,10 +184,8 @@ int main(int argc, char *argv[])
 	args.image_height = 128;
 	args.image_features = 3;
 
-	// NOTE: for the time being, the filter width and height must be TILE_X
-	// and TILE_Y
-	args.filter_width = TILE_X;
-	args.filter_height = TILE_Y;
+	// NOTE: for the time being, the filter size must be identical to TILE_SIZE
+	args.filter_size = TILE_SIZE;
 
 	args.output_features = 32;
 
@@ -198,8 +194,8 @@ int main(int argc, char *argv[])
 	// allocate memory
 	const int images_size = args.image_count * args.image_width *
 		args.image_height * args.image_features;
-	const int filters_size = args.output_features * args.image_features *
-		args.filter_width * args.filter_height;
+	const int filters_size = args.output_features * args.filter_size *
+		args.filter_size * args.filter_size;
 	const int outputs_size = args.image_count * args.image_width *
 		args.image_height * args.output_features;
 	float *images = new float[images_size];
