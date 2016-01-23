@@ -78,7 +78,7 @@ int convolution_cpu(const ConvolutionArguments &args)
 	return timespec_diff_ms(time_begin, time_end);
 }
 
-template <int filter_size>
+template <int tile_x, int tile_y, int filter_size>
 __global__
 void convolution_kernel(const float *images, const float *filters,
 		float *outputs, int image_count, int image_width, int image_height,
@@ -88,10 +88,9 @@ void convolution_kernel(const float *images, const float *filters,
 	const int filter_pixels = filter_size * filter_size;
 	const int stride = image_count;
 
-	const int col = blockIdx.x * TILE_SIZE + threadIdx.x;
-	const int row = blockIdx.y * TILE_SIZE + threadIdx.y;
+	const int col = blockIdx.x * tile_x + threadIdx.x;
+	const int row = blockIdx.y * tile_y + threadIdx.y;
 	const int i_img = blockIdx.z;
-
 
 	if (col < image_width && row < image_height) {
 		for (int i_feat = 0; i_feat < image_features; i_feat++) {
@@ -144,7 +143,7 @@ int convolution_gpu(const ConvolutionArguments &args)
 	timespec time_begin, time_end;
 	clock_gettime(CLOCK_REALTIME, &time_begin);
 
-	convolution_kernel<TILE_SIZE><<<dimGrid, dimBlock>>>(
+	convolution_kernel<TILE_SIZE, TILE_SIZE, TILE_SIZE><<<dimGrid, dimBlock>>>(
 			d_images, d_filters, d_outputs,
 			args.image_count, args.image_width, args.image_height,
 			args.image_features,
