@@ -19,6 +19,9 @@ using namespace std;
 // FIXME: the code requires filter size equals tiling size
 #define TEST_FILTER_SIZE TILE_SIZE
 
+#define IMAGES_PER_THREAD 4
+#define FILTERS_PER_THREAD 4
+
 // }}}
 
 #define CUDA_CHECK(ret) do { \
@@ -91,7 +94,9 @@ int convolution_cpu(const ConvolutionArguments &args)
 	return timespec_diff_ms(time_begin, time_end);
 }
 
-template <int tile_x, int tile_y, int image_features>
+template <int tile_x, int tile_y, int image_features,
+			int images_per_thread,
+			int filters_per_thread>
 __global__
 void convolution_kernel(const float *images, const float *filters,
 		float *outputs, int image_count, int image_width, int image_height,
@@ -156,7 +161,8 @@ int convolution_gpu(const ConvolutionArguments &args)
 	timespec time_begin, time_end;
 	clock_gettime(CLOCK_REALTIME, &time_begin);
 
-	convolution_kernel<TILE_SIZE, TILE_SIZE, TEST_IMAGE_FEATURES>
+	convolution_kernel<TILE_SIZE, TILE_SIZE, TEST_IMAGE_FEATURES,
+		IMAGES_PER_THREAD, FILTERS_PER_THREAD>
 		<<<dimGrid, dimBlock>>>(
 			d_images, d_filters, d_outputs,
 			args.image_count, args.image_width, args.image_height,
