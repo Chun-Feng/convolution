@@ -78,11 +78,11 @@ int convolution_cpu(const ConvolutionArguments &args)
 	return timespec_diff_ms(time_begin, time_end);
 }
 
-template <int tile_x, int tile_y, int filter_size>
+template <int tile_x, int tile_y>
 __global__
 void convolution_kernel(const float *images, const float *filters,
 		float *outputs, int image_count, int image_width, int image_height,
-		int image_features, int output_features)
+		int image_features, int filter_size, int output_features)
 {
 	const int image_size = image_width * image_height;
 	const int filter_pixels = filter_size * filter_size;
@@ -143,10 +143,11 @@ int convolution_gpu(const ConvolutionArguments &args)
 	timespec time_begin, time_end;
 	clock_gettime(CLOCK_REALTIME, &time_begin);
 
-	convolution_kernel<TILE_SIZE, TILE_SIZE, TILE_SIZE><<<dimGrid, dimBlock>>>(
+	convolution_kernel<TILE_SIZE, TILE_SIZE><<<dimGrid, dimBlock>>>(
 			d_images, d_filters, d_outputs,
 			args.image_count, args.image_width, args.image_height,
 			args.image_features,
+			args.filter_size,
 			args.output_features);
 	cudaDeviceSynchronize(); // wait until convolution_kernel is finished
 
