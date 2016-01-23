@@ -5,8 +5,21 @@
 
 using namespace std;
 
-// FIXME: the code assumes filter size equals tiling size
+// adjustable parameters {{{
+
 #define TILE_SIZE 5
+
+#define TEST_IMAGE_COUNT 32
+#define TEST_IMAGE_WIDTH 128
+#define TEST_IMAGE_HEIGHT 128
+#define TEST_IMAGE_FEATURES 3
+
+#define TEST_OUTPUT_FEATURES 32
+
+// FIXME: the code requires filter size equals tiling size
+#define TEST_FILTER_SIZE TILE_SIZE
+
+// }}}
 
 #define CUDA_CHECK(ret) do { \
 	int errorcode = (ret); \
@@ -168,15 +181,12 @@ int main(int argc, char *argv[])
 {
 	ConvolutionArguments args;
 
-	args.image_count = 32;
-	args.image_width = 128;
-	args.image_height = 128;
-	args.image_features = 3;
-
-	// NOTE: for the time being, the filter size must be identical to TILE_SIZE
-	args.filter_size = TILE_SIZE;
-
-	args.output_features = 32;
+	args.image_count = TEST_IMAGE_COUNT;
+	args.image_width = TEST_IMAGE_WIDTH;
+	args.image_height = TEST_IMAGE_HEIGHT;
+	args.image_features = TEST_IMAGE_FEATURES;
+	args.filter_size = TEST_FILTER_SIZE;
+	args.output_features = TEST_OUTPUT_FEATURES;
 
 	cout << "initializing" << endl;
 
