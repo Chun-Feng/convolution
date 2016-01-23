@@ -41,38 +41,33 @@ int convolution_cpu(const ConvolutionArguments &args)
 {
 	const int image_size = args.image_width * args.image_height;
 	const int filter_pixels = args.filter_size * args.filter_size;
-	const int output_size = image_size;
+	const int stride = args.image_count;
 
 	timespec time_begin, time_end;
 	clock_gettime(CLOCK_REALTIME, &time_begin);
 
 	for (int i_img = 0; i_img < args.image_count; i_img++) {
 		for (int i_feat = 0; i_feat < args.image_features; i_feat++) {
-			const int image_index = i_img * args.image_features + i_feat;
-			const float *image = &args.images[image_index * image_size];
 			for (int i_out_feat = 0; i_out_feat < args.output_features; i_out_feat++) {
-				const int filter_index = i_feat * args.output_features + i_out_feat;
-				const int output_index = i_img * args.output_features + i_out_feat;
 
 				// convolution between one image feature and one filter
-				const float *filter = &args.filters[filter_index * filter_pixels];
-				float *output = &args.outputs[output_index * output_size];
-
 				for (int row = 0; row < args.image_height; row++) {
 					for (int col = 0; col < args.image_width; col++) {
 						float sum = 0.0;
 						for (int frow = 0; frow < args.filter_size; frow++) {
 							for (int fcol = 0; fcol < args.filter_size; fcol++) {
+								int findex = frow * args.filter_size + fcol;
 								int irow = row + frow - args.filter_size / 2;
 								int icol = col + fcol - args.filter_size / 2;
 								if (irow >= 0 && irow < args.image_height
 										&& icol >= 0 && icol < args.image_width) {
-									sum += image[irow * args.image_width + icol] *
-										filter[frow * args.filter_size + fcol];
+									sum +=
+										args.images[i_feat * image_size * stride + (irow * args.image_width + icol) * stride + i_img] *
+										args.filters[i_feat * filter_pixels * args.output_features + findex * args.output_features + i_out_feat];
 								}
 							}
 						}
-						output[row * args.image_width + col] = sum;
+						args.outputs[i_out_feat * image_size * stride + (row * args.image_width + col) * stride + i_img] = sum;
 					}
 				}
 			}
@@ -91,7 +86,7 @@ void convolution_kernel(const float *images, const float *filters,
 {
 	const int image_size = image_width * image_height;
 	const int filter_pixels = filter_size * filter_size;
-	const int output_size = image_size;
+	const int stride = image_count;
 
 	const int col = blockIdx.x * TILE_SIZE + threadIdx.x;
 	const int row = blockIdx.y * TILE_SIZE + threadIdx.y;
@@ -101,27 +96,21 @@ void convolution_kernel(const float *images, const float *filters,
 	if (col < image_width && row < image_height) {
 		for (int i_feat = 0; i_feat < image_features; i_feat++) {
 			for (int i_out_feat = 0; i_out_feat < output_features; i_out_feat++) {
-				const int image_index = i_img * image_features + i_feat;
-				const int filter_index = i_feat * output_features + i_out_feat;
-				const int output_index = i_img * output_features + i_out_feat;
-
-				const float *image = &images[image_index * image_size];
-				const float *filter = &filters[filter_index * filter_pixels];
-				float *output = &outputs[output_index * output_size];
 
 				float sum = 0.0;
 				for (int frow = 0; frow < filter_size; frow++) {
 					for (int fcol = 0; fcol < filter_size; fcol++) {
-						int irow = row + frow - filter_size / 2;
-						int icol = col + fcol - filter_size / 2;
+						const int irow = row + frow - filter_size / 2;
+						const int icol = col + fcol - filter_size / 2;
+						const int findex = frow * filter_size + fcol;
 						if (irow >= 0 && irow < image_height
 								&& icol >= 0 && icol < image_width) {
-							sum += image[irow * image_width + icol] *
-								filter[frow * filter_size + fcol];
+							sum += images[i_feat * image_size * stride + (irow * image_width + icol) * stride + i_img] *
+								filters[i_feat * filter_pixels * output_features + findex * output_features + i_out_feat];
 						}
 					}
 				}
-				output[row * image_width + col] = sum;
+				outputs[i_out_feat * image_size * stride + (row * image_width + col) * stride + i_img] = sum;
 			}
 		}
 	}
