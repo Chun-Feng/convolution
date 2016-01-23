@@ -16,11 +16,12 @@ using namespace std;
 
 #define TEST_OUTPUT_FEATURES 32
 
-// FIXME: the code requires filter size equals tiling size
-#define TEST_FILTER_SIZE TILE_SIZE
+#define TEST_FILTER_SIZE 5
 
 #define IMAGES_PER_THREAD 4
 #define FILTERS_PER_THREAD 4
+#define THREADS_X 32
+#define THREADS_Y 4
 
 // }}}
 
@@ -106,8 +107,8 @@ void convolution_kernel(const float *images, const float *filters,
 	const int filter_pixels = filter_size * filter_size;
 	const int stride = image_count;
 
-	const int col = blockIdx.x * tile_x + threadIdx.x;
-	const int row = blockIdx.y * tile_y + threadIdx.y;
+	const int col = blockIdx.x * blockDim.x + threadIdx.x;
+	const int row = blockIdx.y * blockDim.y + threadIdx.y;
 	const int i_img = blockIdx.z;
 
 	if (col < image_width && row < image_height) {
@@ -154,9 +155,10 @@ int convolution_gpu(const ConvolutionArguments &args)
 	CUDA_CHECK(cudaMemcpy(d_filters, args.filters, sizeof(float) * filters_size,
 				cudaMemcpyHostToDevice));
 
-	dim3 dimGrid(args.image_width / TILE_SIZE + 1, args.image_height / TILE_SIZE + 1,
+	dim3 dimGrid(args.image_width / THREADS_X + 1,
+			args.image_height / THREADS_Y + 1,
 			args.image_count);
-	dim3 dimBlock(TILE_SIZE, TILE_SIZE, 1);
+	dim3 dimBlock(THREADS_X, THREADS_Y);
 
 	timespec time_begin, time_end;
 	clock_gettime(CLOCK_REALTIME, &time_begin);
