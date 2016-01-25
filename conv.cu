@@ -112,9 +112,7 @@ void convolution_kernel(const float *images, const float *filters,
 	const int filter_pixels = filter_size * filter_size;
 	const int output_features_per_block = threads_y * output_features_per_thread;
 
-	const int full_index_x = blockIdx.x * threads_x * images_per_thread + threadIdx.x;
-	const int full_index_y = blockIdx.y * threads_y * output_features_per_thread + threadIdx.y;
-	const int image_index = full_index_x;
+	const int image_index = blockIdx.x * threads_x * images_per_thread + threadIdx.x;
 	const int blocks_per_pixel = output_features / (threads_y * output_features_per_thread);
 	const int output_feature_index = blockIdx.y % blocks_per_pixel;
 	const int image_pixel_index = blockIdx.y / blocks_per_pixel;
