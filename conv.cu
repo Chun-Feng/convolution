@@ -12,7 +12,7 @@ using namespace std;
 #define TEST_IMAGE_HEIGHT 128
 #define TEST_IMAGE_FEATURES 3
 
-// FIXME: TEST_OUTPUT_FEATURES causes cuda error
+// FIXME: TEST_OUTPUT_FEATURES < 16 causes cuda error
 #define TEST_OUTPUT_FEATURES 32
 
 #define TEST_FILTER_SIZE 5
