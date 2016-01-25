@@ -36,10 +36,10 @@ using namespace std;
 // compute ceiling(x/y)
 #define DIV_CEILING(x, y) (((x)+(y)-1)/(y))
 
-// returns t2 - t1 in milliseconds
-int timespec_diff_ms(timespec& t1, timespec& t2)
+// returns t2 - t1 in microseconds
+int timespec_diff_us(timespec& t1, timespec& t2)
 {
-	return (t2.tv_sec - t1.tv_sec) * 1000 + (t2.tv_nsec - t1.tv_nsec) / 1e6;
+	return (t2.tv_sec - t1.tv_sec) * 1e6 + (t2.tv_nsec - t1.tv_nsec) / 1e3;
 }
 
 struct ConvolutionArguments
@@ -97,7 +97,7 @@ int convolution_cpu(const ConvolutionArguments &args)
 	}
 
 	clock_gettime(CLOCK_REALTIME, &time_end);
-	return timespec_diff_ms(time_begin, time_end);
+	return timespec_diff_us(time_begin, time_end);
 }
 
 template <int threads_x, int threads_y, int cached_pixels,
@@ -276,7 +276,7 @@ int convolution_gpu(const ConvolutionArguments &args)
 	cudaFree(&d_filters);
 	cudaFree(&d_outputs);
 
-	return timespec_diff_ms(time_begin, time_end);
+	return timespec_diff_us(time_begin, time_end);
 }
 
 int main(int argc, char *argv[])
@@ -330,11 +330,11 @@ int main(int argc, char *argv[])
 
 	cout << "running cpu convolution" << endl;
 	args.outputs = outputs_cpu;
-	int duration_cpu = convolution_cpu(args);
+	int duration_cpu_us = convolution_cpu(args);
 
 	cout << "running gpu convolution" << endl;
 	args.outputs = outputs_gpu;
-	int duration_gpu = convolution_gpu(args);
+	int duration_gpu_us = convolution_gpu(args);
 
 	// compare cpu and gpu answers
 	float threshold = 0.00001;
@@ -342,14 +342,23 @@ int main(int argc, char *argv[])
 		if (abs(outputs_cpu[i] - outputs_gpu[i]) >= threshold) {
 			cout << "error: answers don't match at index " << i << endl;
 			cout << "cpu output: " << outputs_cpu[i] << endl;
+			for (int k = 0; k < 16; k++)
+				cout << outputs_cpu[i + k] << " ";
+			cout << endl;
 			cout << "gpu output: " << outputs_gpu[i] << endl;
+			for (int k = 0; k < 16; k++)
+				cout << outputs_gpu[i + k] << " ";
+			cout << endl << "full gpu output:" << endl;
+			for (int k = 0; k < outputs_size; k++)
+				cout << outputs_gpu[k] << " ";
+			cout << endl;
 			exit(1);
 		}
 	}
 	cout << "compare ok" << endl;
 
-	cout << "cpu duration: " << duration_cpu << " ms" << endl;
-	cout << "gpu duration: " << duration_gpu << " ms" << endl;
+	cout << "cpu duration: " << (duration_cpu_us / 1000.0) << " ms" << endl;
+	cout << "gpu duration: " << (duration_gpu_us / 1000.0) << " ms" << endl;
 
 	// "read" outputs (for valgrind checking)
 	volatile int sink;
