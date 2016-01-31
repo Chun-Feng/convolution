@@ -230,7 +230,7 @@ int convolution_gpu(const ConvolutionArguments &args)
 				cudaMemcpyHostToDevice));
 
 	dim3 dimGrid(DIV_CEILING(args.image_count, THREADS_X * IMAGES_PER_THREAD),
-			(image_pixels * args.filter_count) / (THREADS_Y * OUTPUT_FEATURES_PER_THREAD));
+			(image_pixels * args.filter_count) / (THREADS_Y * FILTERS_PER_THREAD));
 	dim3 dimBlock(THREADS_X, THREADS_Y);
 
 	timespec time_begin, time_end;
@@ -238,7 +238,7 @@ int convolution_gpu(const ConvolutionArguments &args)
 
 	convolution_kernel<THREADS_X, THREADS_Y, CACHED_PIXELS,
 		TEST_IMAGE_FEATURES, IMAGES_PER_THREAD,
-		OUTPUT_FEATURES_PER_THREAD>
+		FILTERS_PER_THREAD>
 		<<<dimGrid, dimBlock>>>(
 			d_images, d_filters, d_outputs,
 			args.image_count, args.image_width, args.image_height,
@@ -268,7 +268,7 @@ int main(int argc, char *argv[])
 	args.image_height = TEST_IMAGE_HEIGHT;
 	args.image_features = TEST_IMAGE_FEATURES;
 	args.filter_size = TEST_FILTER_SIZE;
-	args.filter_count = TEST_OUTPUT_FEATURES;
+	args.filter_count = TEST_FILTERS;
 
 	cout << "initializing" << endl;
 
