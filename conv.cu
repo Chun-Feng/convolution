@@ -3,27 +3,9 @@
 #include <cmath>
 #include <sys/time.h>
 
+#include "config.h"
+
 using namespace std;
-
-// adjustable parameters {{{
-
-#define TEST_IMAGE_COUNT 32
-#define TEST_IMAGE_WIDTH 128
-#define TEST_IMAGE_HEIGHT 128
-#define TEST_IMAGE_FEATURES 3
-
-// FIXME: TEST_OUTPUT_FEATURES < 16 causes cuda error
-#define TEST_OUTPUT_FEATURES 32
-
-#define TEST_FILTER_SIZE 5
-
-#define IMAGES_PER_THREAD 4
-#define OUTPUT_FEATURES_PER_THREAD 4
-#define THREADS_X 32
-#define THREADS_Y 4
-#define CACHED_PIXELS 4
-
-// }}}
 
 #define CUDA_CHECK(ret) do { \
 	int errorcode = (ret); \
