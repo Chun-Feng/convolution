@@ -52,9 +52,9 @@ struct ConvolutionArguments
 
 	float *filters;
 	int filter_size;
+	int filter_count;
 
 	float *outputs;
-	int output_features;
 };
 
 // Don't try to optimize This function because it is only used to verify the
@@ -69,7 +69,7 @@ int convolution_cpu(const ConvolutionArguments &args)
 	clock_gettime(CLOCK_REALTIME, &time_begin);
 
 	for (int i_img = 0; i_img < args.image_count; i_img++) {
-		for (int i_out_feat = 0; i_out_feat < args.output_features; i_out_feat++) {
+		for (int i_filter = 0; i_filter < args.filter_count; i_filter++) {
 
 			// convolution between one image feature and one filter
 			for (int row = 0; row < args.image_height; row++) {
@@ -85,12 +85,12 @@ int convolution_cpu(const ConvolutionArguments &args)
 								for (int i_feat = 0; i_feat < args.image_features; i_feat++) {
 									sum +=
 										args.images[i_feat * image_size * stride + (irow * args.image_width + icol) * stride + i_img] *
-										args.filters[i_feat * filter_pixels * args.output_features + findex * args.output_features + i_out_feat];
+										args.filters[i_feat * filter_pixels * args.filter_count + findex * args.filter_count + i_filter];
 								}
 							}
 						}
 					}
-					args.outputs[i_out_feat * image_size * stride + (row * args.image_width + col) * stride + i_img] = sum;
+					args.outputs[i_filter * image_size * stride + (row * args.image_width + col) * stride + i_img] = sum;
 				}
 			}
 		}
@@ -102,34 +102,34 @@ int convolution_cpu(const ConvolutionArguments &args)
 
 template <int threads_x, int threads_y, int cached_pixels,
 			int image_features, int images_per_thread,
-			int output_features_per_thread>
+			int filters_per_thread>
 __global__
 void convolution_kernel(const float *images, const float *filters,
 		float *outputs, int image_count, int image_width, int image_height,
-		int filter_size, int output_features)
+		int filter_size, int filter_count)
 {
 	const int image_pixels = image_width * image_height;
 	const int filter_pixels = filter_size * filter_size;
-	const int output_features_per_block = threads_y * output_features_per_thread;
+	const int filters_per_block = threads_y * filters_per_thread;
 
 	const int image_index = blockIdx.x * threads_x * images_per_thread + threadIdx.x;
-	const int blocks_per_pixel = output_features / (threads_y * output_features_per_thread);
-	const int output_feature_index = blockIdx.y % blocks_per_pixel;
+	const int blocks_per_pixel = filter_count / (threads_y * filters_per_thread);
+	const int filter_index = blockIdx.y % blocks_per_pixel;
 	const int image_pixel_index = blockIdx.y / blocks_per_pixel;
 	const int image_pixel_x = image_pixel_index % image_width;
 	const int image_pixel_y = image_pixel_index / image_width;
 
 	const int thread_id = threadIdx.y * THREADS_X + threadIdx.x;
-	const int load_filter_pixel_index = thread_id / output_features_per_block;
-	const int load_output_features_index = thread_id % output_features_per_block;
+	const int load_filter_pixel_index = thread_id / filters_per_block;
+	const int load_filter_index = thread_id % filters_per_block;
 
 	__shared__ float
 		shm_images[cached_pixels * image_features][threads_x * images_per_thread];
 	__shared__ float
-		shm_filters[cached_pixels * image_features][threads_y * output_features_per_thread];
+		shm_filters[cached_pixels * image_features][threads_y * filters_per_thread];
 
-	float result[output_features_per_thread][images_per_thread];
-	for (int f = 0; f < output_features_per_thread; f++) {
+	float result[filters_per_thread][images_per_thread];
+	for (int f = 0; f < filters_per_thread; f++) {
 		for (int g = 0; g < images_per_thread; g++) {
 			result[f][g] = 0;
 		}
@@ -139,9 +139,9 @@ void convolution_kernel(const float *images, const float *filters,
 	images += image_index;
 
 	// point to filters(+0, +load_filter_pixel_index,
-	//   +(output_feature_index * output_features_per_block + load_output_features_index))
-	filters += load_filter_pixel_index * output_features
-		+ (output_feature_index * output_features_per_block + load_output_features_index);
+	//   +(filter_index * filters_per_block + load_filter_index))
+	filters += load_filter_pixel_index * filter_count
+		+ (filter_index * filters_per_block + load_filter_index);
 
 	for (int pixel = 0; pixel < filter_pixels; pixel += cached_pixels) {
 		// load data from global memory to shm_images
@@ -176,17 +176,17 @@ void convolution_kernel(const float *images, const float *filters,
 		}
 
 		// load data from global memory to shm_filters
-		if (load_filter_pixel_index < threads_x / output_features_per_thread) {
-			for (int p2 = 0; p2 < cached_pixels; p2 += threads_x / output_features_per_thread) {
+		if (load_filter_pixel_index < threads_x / filters_per_thread) {
+			for (int p2 = 0; p2 < cached_pixels; p2 += threads_x / filters_per_thread) {
 				if (p2 + load_filter_pixel_index < cached_pixels) {
 					if (pixel + p2 + load_filter_pixel_index < filter_pixels) {
 						for (int f = 0; f < image_features; f++) {
-							shm_filters[f * cached_pixels + p2 + load_filter_pixel_index][load_output_features_index]
-								= filters[f * filter_pixels * output_features + (pixel + p2) * output_features];
+							shm_filters[f * cached_pixels + p2 + load_filter_pixel_index][load_filter_index]
+								= filters[f * filter_pixels * filter_count + (pixel + p2) * filter_count];
 						}
 					} else {
 						for (int f = 0; f < image_features; f++) {
-							shm_filters[f * cached_pixels + p2 + load_filter_pixel_index][load_output_features_index]
+							shm_filters[f * cached_pixels + p2 + load_filter_pixel_index][load_filter_index]
 								= 0;
 						}
 					}
@@ -198,11 +198,11 @@ void convolution_kernel(const float *images, const float *filters,
 
 		// compute partial sums
 		for (int i = 0; i < cached_pixels * image_features; i++) {
-			for (int f = 0; f < output_features_per_thread; f++) {
+			for (int f = 0; f < filters_per_thread; f++) {
 				for (int g = 0; g < images_per_thread; g++) {
 					result[f][g] +=
 						shm_images[i][threadIdx.x * images_per_thread + g]
-						* shm_filters[i][threadIdx.y * output_features_per_thread + f];
+						* shm_filters[i][threadIdx.y * filters_per_thread + f];
 				}
 			}
 		}
@@ -211,14 +211,14 @@ void convolution_kernel(const float *images, const float *filters,
 	}
 
 	// NOTE: image_pixel_index = image_y * image_width + image_x
-	outputs += (output_feature_index * output_features_per_block + threadIdx.y * output_features_per_thread)
+	outputs += (filter_index * filters_per_block + threadIdx.y * filters_per_thread)
 			* image_pixels * image_count
 		+ image_pixel_index * image_count
 		+ image_index;
 
 	for (int g = 0; g < images_per_thread; g++) {
 		if (image_index + g * threads_x < image_count) {
-			for (int f = 0; f < output_features_per_thread; f++) {
+			for (int f = 0; f < filters_per_thread; f++) {
 				outputs[f * image_pixels * image_count + g * threads_x] = result[f][g];
 			}
 		}
@@ -229,10 +229,10 @@ int convolution_gpu(const ConvolutionArguments &args)
 {
 	const int images_size = args.image_count * args.image_width *
 		args.image_height * args.image_features;
-	const int filters_size = args.output_features * args.image_features *
+	const int filters_size = args.filter_count * args.image_features *
 		args.filter_size * args.filter_size;
 	const int outputs_size = args.image_count * args.image_width *
-		args.image_height * args.output_features;
+		args.image_height * args.filter_count;
 	const int image_pixels = args.image_width * args.image_height;
 
 	// allocate device memory
@@ -248,7 +248,7 @@ int convolution_gpu(const ConvolutionArguments &args)
 				cudaMemcpyHostToDevice));
 
 	dim3 dimGrid(DIV_CEILING(args.image_count, THREADS_X * IMAGES_PER_THREAD),
-			(image_pixels * args.output_features) / (THREADS_Y * OUTPUT_FEATURES_PER_THREAD));
+			(image_pixels * args.filter_count) / (THREADS_Y * OUTPUT_FEATURES_PER_THREAD));
 	dim3 dimBlock(THREADS_X, THREADS_Y);
 
 	timespec time_begin, time_end;
@@ -261,7 +261,7 @@ int convolution_gpu(const ConvolutionArguments &args)
 			d_images, d_filters, d_outputs,
 			args.image_count, args.image_width, args.image_height,
 			args.filter_size,
-			args.output_features);
+			args.filter_count);
 	cudaDeviceSynchronize(); // wait until convolution_kernel is finished
 
 	clock_gettime(CLOCK_REALTIME, &time_end);
@@ -286,17 +286,17 @@ int main(int argc, char *argv[])
 	args.image_height = TEST_IMAGE_HEIGHT;
 	args.image_features = TEST_IMAGE_FEATURES;
 	args.filter_size = TEST_FILTER_SIZE;
-	args.output_features = TEST_OUTPUT_FEATURES;
+	args.filter_count = TEST_OUTPUT_FEATURES;
 
 	cout << "initializing" << endl;
 
 	// allocate memory
 	const int images_size = args.image_count * args.image_width *
 		args.image_height * args.image_features;
-	const int filters_size = args.output_features * args.filter_size *
+	const int filters_size = args.filter_count * args.filter_size *
 		args.filter_size * args.filter_size;
 	const int outputs_size = args.image_count * args.image_width *
-		args.image_height * args.output_features;
+		args.image_height * args.filter_count;
 	float *images = new float[images_size];
 	float *filters = new float[filters_size];
 	float *outputs_cpu = new float[outputs_size];
@@ -313,11 +313,11 @@ int main(int argc, char *argv[])
 		<< " features=" << args.image_features
 		<< " width=" << args.image_width
 		<< " height=" << args.image_height << endl;
-	cout << "filter: count=" << (args.image_features * args.output_features)
+	cout << "filter: count=" << (args.image_features * args.filter_count)
 		<< " width=" << args.image_width
 		<< " height=" << args.image_height << endl;
 	cout << "output: count=" << args.image_count
-		<< " features=" << args.output_features
+		<< " features=" << args.filter_count
 		<< " width=" << args.image_width
 		<< " height=" << args.image_height << endl;
 
