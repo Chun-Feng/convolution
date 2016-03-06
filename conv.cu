@@ -328,9 +328,6 @@ int main(int argc, char *argv[])
 			cout << "gpu output: " << outputs_gpu[i] << endl;
 			for (int k = 0; k < 16; k++)
 				cout << outputs_gpu[i + k] << " ";
-			cout << endl << "full gpu output:" << endl;
-			for (int k = 0; k < outputs_size; k++)
-				cout << outputs_gpu[k] << " ";
 			cout << endl;
 			exit(1);
 		}
