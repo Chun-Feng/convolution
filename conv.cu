@@ -8,10 +8,10 @@
 using namespace std;
 
 #define CUDA_CHECK(ret) do { \
-	int errorcode = (ret); \
+	cudaError_t errorcode = (ret); \
 	if (errorcode != cudaSuccess) { \
 		std::cout << "cuda error at file " << __FILE__ << " line " << __LINE__ \
-			<< ": " << errorcode << std::endl; \
+			<< ": " << cudaGetErrorString(errorcode) << std::endl; \
 		exit(1); \
 	}} while(0)
 
@@ -244,6 +244,7 @@ int convolution_gpu(const ConvolutionArguments &args)
 			args.image_count, args.image_width, args.image_height,
 			args.filter_size,
 			args.filter_count);
+	CUDA_CHECK(cudaGetLastError());
 	cudaDeviceSynchronize(); // wait until convolution_kernel is finished
 
 	clock_gettime(CLOCK_REALTIME, &time_end);
