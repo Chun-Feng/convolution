@@ -295,9 +295,8 @@ int main(int argc, char *argv[])
 		<< " features=" << args.image_features
 		<< " width=" << args.image_width
 		<< " height=" << args.image_height << endl;
-	cout << "filter: count=" << (args.image_features * args.filter_count)
-		<< " width=" << args.image_width
-		<< " height=" << args.image_height << endl;
+	cout << "filter: count=" << args.filter_count
+		<< " size=" << args.filter_size << endl;
 	cout << "output: count=" << args.image_count
 		<< " features=" << args.filter_count
 		<< " width=" << args.image_width
