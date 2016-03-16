@@ -111,7 +111,9 @@ void convolution_kernel(const float *images, const float *filters,
 		shm_filters[cached_pixels * image_features][threads_y * filters_per_thread];
 
 	float result[filters_per_thread][images_per_thread];
+	#pragma unroll
 	for (int f = 0; f < filters_per_thread; f++) {
+		#pragma unroll
 		for (int g = 0; g < images_per_thread; g++) {
 			result[f][g] = 0;
 		}
@@ -179,8 +181,13 @@ void convolution_kernel(const float *images, const float *filters,
 		__syncthreads();
 
 		// compute partial sums
+		// NOTE: The #pragma unroll directive enables the compiler to put
+		//       result[][] in registers instead of local memory.
+		#pragma unroll
 		for (int i = 0; i < cached_pixels * image_features; i++) {
+			#pragma unroll
 			for (int f = 0; f < filters_per_thread; f++) {
+				#pragma unroll
 				for (int g = 0; g < images_per_thread; g++) {
 					result[f][g] +=
 						shm_images[i][threadIdx.x * images_per_thread + g]
